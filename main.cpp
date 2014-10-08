@@ -9,9 +9,9 @@ using namespace std;
 
 void help()
 {
-    cout << "\nThis program demonstrates line finding with the Hough transform.\n"
+    cout << "\nThis program reads and plays sheet music from a scanned image.\n"
             "Usage:\n"
-            "./houghlines <image_name>, Default is test.jpg\n" << endl;
+            "./sightread <image_name>, Default is test.jpg\n" << endl;
 }
 
 float median(vector<float> &v)
@@ -39,6 +39,10 @@ double find_rotation_angle(cv::Mat& edges)
     vector<float> slopes;
 
     HoughLinesP(edges, lines, 1, CV_PI/180, 300, 50, 10 );
+    if(lines.size() == 0) {
+        std::cout << "Not enough lines in this image!" << std::endl;        
+        exit(-1);
+    }
 
     for( size_t i = 0; i < lines.size(); i++ ) {
         Vec4i l = lines[i];
@@ -53,9 +57,8 @@ double find_rotation_angle(cv::Mat& edges)
 
 void horiz_projection(Mat& img, vector<int>& histo)
 {
-    Mat proj;
+    //Mat proj = Mat::zeros(img.rows, img.cols, img.type());
     int count, i, j;
-    proj = Mat::zeros(img.rows, img.cols, img.type());
 
     for(i=0; i < img.rows; i++) {   
         for(count = 0, j=0; j < img.cols; j++) {
@@ -63,10 +66,30 @@ void horiz_projection(Mat& img, vector<int>& histo)
         }
 
         histo.push_back(count);
-        line(proj, Point(0, i), Point(count, i), Scalar(255, 255, 255), 1, 4);
+        //line(proj, Point(0, i), Point(count, i), Scalar(0,0,0), 1, 4);
     }
 
-    imshow("proj", proj);
+    //imshow("proj", proj);
+    waitKey();
+}
+
+void vert_projection(Mat& img, vector<int>& histo)
+{
+    Mat proj = Mat::zeros(img.rows, img.cols, img.type());
+    int count, i, j, k;
+
+    for(i=0; i < img.cols; i++) {   
+        for(count = 0, j=0; j < img.rows; j++) {
+            for(k=0; k < img.channels(); k++) {
+                count += (img.at<int>(j, i, k)) ? 0:1;
+            }
+        }
+
+        histo.push_back(count);
+        //line(proj, Point(i, 0), Point(i, count/img.channels()), Scalar(0,0,0), 1, 4);
+    }
+
+    //imshow("proj", proj);
     waitKey();
 }
 
@@ -93,18 +116,26 @@ int main(int argc, char** argv)
 
     double angle = find_rotation_angle(edges);
     
+    std::cout << "Rotating image by "
+              << abs(angle) 
+              << " degrees ";
+    if(angle > 0) { std::cout << "counter-"; }
+    std::cout << "clockwise."  << std::endl;
+
     // Fix the rotation of the music. Guarantee the staff is horizontal.
     rotate(c_src, angle, c_src);
     rotate(g_src, angle, g_src);
 
     threshold(g_src, bw_src, 130, 255, CV_THRESH_BINARY);//|CV_THRESH_OTSU);
     
-    vector<int> projection; 
-    
-    horiz_projection(bw_src, projection);
+    vector<int> horiz_proj; 
+    vector<int> vert_proj; 
 
-    imshow("source", c_src);
-    imshow("g_src", g_src);
+    horiz_projection(bw_src, horiz_proj);
+    vert_projection(bw_src, vert_proj);
+
+    //imshow("source", c_src);
+    //imshow("g_src", g_src);
     imshow("B&W", bw_src);
     waitKey();
 
