@@ -3,13 +3,17 @@
 
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 
 using namespace cv;
 using namespace std;
 
+RNG rng(12345);
+int thresh = 100;
+int max_thresh = 255;
+
 void help()
-{
-    cout << "\nThis program reads and plays sheet music from a scanned image.\n"
+{ cout << "\nThis program reads and plays sheet music from a scanned image.\n"
             "Usage:\n"
             "./sightread <image_name>, Default is test.jpg\n" << endl;
 }
@@ -38,7 +42,7 @@ double find_rotation_angle(cv::Mat& edges)
     vector<Vec4i> lines;
     vector<float> slopes;
 
-    HoughLinesP(edges, lines, 1, CV_PI/180, 300, 50, 10 );
+    HoughLinesP(edges, lines, 1, CV_PI/180, 100, 50, 10 );
     if(lines.size() == 0) {
         std::cout << "Not enough lines in this image!" << std::endl;        
         exit(-1);
@@ -93,6 +97,70 @@ void vert_projection(Mat& img, vector<int>& histo)
     waitKey();
 }
 
+void remove_staff(Mat& img, int index)
+{
+    imshow("staffBgone", img);
+    waitKey();
+    for(int x = 0; x < img.cols; x++) {
+        if(img.at<uchar>(index, x) == 0) { 
+            int sum = 0;
+            for(int y = -3; y <= 3; y++) {
+                if(index + y > 0 && index + y < img.rows) {
+                    sum += img.at<uchar>(index+y, x);                    
+                }
+            } 
+            if(sum >1000) {
+                for(int y = -2; y <= 2; y++) {
+                    if(index + y > 0 && index + y < img.rows) {
+                        img.at<uchar>(index+y, x) = 255;
+                    }
+                } 
+            }
+        }    
+    }
+}
+
+
+
+void thresh_callback(int, void* img)
+{
+  Mat threshold_output = *(Mat*)img;
+  vector<vector<Point> > contours;
+  vector<Vec4i> hierarchy;
+
+  /// Find contours
+  findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
+
+  /// Approximate contours to polygons + get bounding rects and circles
+  vector<vector<Point> > contours_poly( contours.size() );
+  vector<Rect> boundRect( contours.size() );
+  vector<Point2f>center( contours.size() );
+  vector<float>radius( contours.size() );
+
+  for( int i = 0; i < contours.size(); i++ )
+     { approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
+       boundRect[i] = boundingRect( Mat(contours_poly[i]) );
+//       minEnclosingCircle( (Mat)contours_poly[i], center[i], radius[i] );
+     }
+
+
+  /// Draw polygonal contour + bonding rects + circles
+  Mat drawing = Mat::zeros( threshold_output.size(), CV_8UC3 );
+  for( int i = 0; i< contours.size(); i++ )
+     {
+       Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+       drawContours( drawing, contours_poly, i, color, 1, 8, vector<Vec4i>(), 0, Point() );
+       rectangle( drawing, boundRect[i].tl(), boundRect[i].br(), color, 2, 8, 0 );
+  //     circle( drawing, center[i], (int)radius[i], color, 2, 8, 0 );
+     }
+
+  /// Show in a window
+  namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
+  imshow( "Contours", drawing );
+}
+
+
+
 int main(int argc, char** argv)
 {
     const char* filename = argc >= 2 ? argv[1] : "test.jpg";
@@ -130,9 +198,25 @@ int main(int argc, char** argv)
     
     vector<int> horiz_proj; 
     vector<int> vert_proj; 
-
+    
     horiz_projection(bw_src, horiz_proj);
     vert_projection(bw_src, vert_proj);
+
+    vector<int> staff_positions;
+    int max = *std::max_element(horiz_proj.begin(), horiz_proj.end());
+    for(int i = 0; i < horiz_proj.size(); i++) {
+        if(horiz_proj[i] > max/4.0 && (horiz_proj[i] >= horiz_proj[i+1] || horiz_proj[i] >= horiz_proj[i-1]) ) {
+            cout << "Removing line at: " << i << endl;
+            remove_staff(bw_src, i); 
+        }
+    }
+
+    char* source_window = "Source";
+    namedWindow( source_window, CV_WINDOW_AUTOSIZE );
+    imshow( source_window, bw_src );
+
+    createTrackbar( " Threshold:", "Source", &thresh, max_thresh, thresh_callback );
+    thresh_callback( 0, (void*)&bw_src );
 
     //imshow("source", c_src);
     //imshow("g_src", g_src);
