@@ -13,9 +13,11 @@ int thresh = 100;
 int max_thresh = 255;
 
 void help()
-{ cout << "\nThis program reads and plays sheet music from a scanned image.\n"
-            "Usage:\n"
-            "./sightread <image_name>, Default is test.jpg\n" << endl;
+{ 
+    cout << "\nThis program reads and plays sheet music from a scanned image.\n"
+         << "Usage:\n"
+         << "./sightread <image_name>, Default is test.jpg\n"
+         << endl;
 }
 
 float median(vector<float> &v)
@@ -74,7 +76,6 @@ void horiz_projection(Mat& img, vector<int>& histo)
     }
 
     //imshow("proj", proj);
-    waitKey();
 }
 
 void vert_projection(Mat& img, vector<int>& histo)
@@ -94,13 +95,10 @@ void vert_projection(Mat& img, vector<int>& histo)
     }
 
     //imshow("proj", proj);
-    waitKey();
 }
 
 void remove_staff(Mat& img, int index)
 {
-    imshow("staffBgone", img);
-    waitKey();
     for(int x = 0; x < img.cols; x++) {
         if(img.at<uchar>(index, x) == 0) { 
             int sum = 0;
@@ -120,46 +118,40 @@ void remove_staff(Mat& img, int index)
     }
 }
 
-
-
-void thresh_callback(int, void* img)
+void find_contours(int t, Mat& threshold_output)
 {
-  Mat threshold_output = *(Mat*)img;
-  vector<vector<Point> > contours;
-  vector<Vec4i> hierarchy;
+    vector<vector<Point> > contours;
+    vector<Vec4i> hierarchy;
 
-  /// Find contours
-  findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
+    /// Find contours
+    findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
 
-  /// Approximate contours to polygons + get bounding rects and circles
-  vector<vector<Point> > contours_poly( contours.size() );
-  vector<Rect> boundRect( contours.size() );
-  vector<Point2f>center( contours.size() );
-  vector<float>radius( contours.size() );
+    /// Approximate contours to polygons + get bounding rects and circles
+    vector<vector<Point> > contours_poly( contours.size() );
+    vector<Rect> boundRect( contours.size() );
+    vector<Point2f>center( contours.size() );
+    vector<float>radius( contours.size() );
 
-  for( int i = 0; i < contours.size(); i++ )
+    for( int i = 0; i < contours.size(); i++ )
      { approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
        boundRect[i] = boundingRect( Mat(contours_poly[i]) );
-//       minEnclosingCircle( (Mat)contours_poly[i], center[i], radius[i] );
+    //       minEnclosingCircle( (Mat)contours_poly[i], center[i], radius[i] );
      }
 
 
-  /// Draw polygonal contour + bonding rects + circles
-  Mat drawing = Mat::zeros( threshold_output.size(), CV_8UC3 );
-  for( int i = 0; i< contours.size(); i++ )
+    /// Draw polygonal contour + bounding rects + circles
+    Mat drawing = Mat::zeros( threshold_output.size(), CV_8UC3 );
+    for( int i = 0; i< contours.size(); i++ )
      {
        Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
        drawContours( drawing, contours_poly, i, color, 1, 8, vector<Vec4i>(), 0, Point() );
        rectangle( drawing, boundRect[i].tl(), boundRect[i].br(), color, 2, 8, 0 );
-  //     circle( drawing, center[i], (int)radius[i], color, 2, 8, 0 );
+    //     circle( drawing, center[i], (int)radius[i], color, 2, 8, 0 );
      }
 
-  /// Show in a window
-  namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
-  imshow( "Contours", drawing );
+
+    imshow( "Contours", drawing );
 }
-
-
 
 int main(int argc, char** argv)
 {
@@ -195,6 +187,7 @@ int main(int argc, char** argv)
     rotate(g_src, angle, g_src);
 
     threshold(g_src, bw_src, 130, 255, CV_THRESH_BINARY);//|CV_THRESH_OTSU);
+    imshow("B&W", bw_src);
     
     vector<int> horiz_proj; 
     vector<int> vert_proj; 
@@ -206,21 +199,13 @@ int main(int argc, char** argv)
     int max = *std::max_element(horiz_proj.begin(), horiz_proj.end());
     for(int i = 0; i < horiz_proj.size(); i++) {
         if(horiz_proj[i] > max/4.0 && (horiz_proj[i] >= horiz_proj[i+1] || horiz_proj[i] >= horiz_proj[i-1]) ) {
-            cout << "Removing line at: " << i << endl;
             remove_staff(bw_src, i); 
         }
     }
 
-    char* source_window = "Source";
-    namedWindow( source_window, CV_WINDOW_AUTOSIZE );
-    imshow( source_window, bw_src );
+    imshow("B&W Without Staff", bw_src);
+    find_contours(thresh, bw_src);
 
-    createTrackbar( " Threshold:", "Source", &thresh, max_thresh, thresh_callback );
-    thresh_callback( 0, (void*)&bw_src );
-
-    //imshow("source", c_src);
-    //imshow("g_src", g_src);
-    imshow("B&W", bw_src);
     waitKey();
 
     return 0;
