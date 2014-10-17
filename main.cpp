@@ -10,7 +10,6 @@ using namespace std;
 
 RNG rng(12345);
 int thresh = 100;
-int max_thresh = 255;
 
 void help()
 { 
@@ -118,37 +117,67 @@ void remove_staff(Mat& img, int index)
     }
 }
 
-void find_contours(int t, Mat& threshold_output)
+void flood_line(Mat& img, Point seed, vector<Point>& line_pts)
+{
+    // If point isn't black, return.
+    if( img.at<uchar>(seed) != 0 ) { return; }
+    if( seed.x < 0 || seed.x > img.rows || seed.y < 0 || seed.y > img.cols );
+    if( std::find(line_pts.begin(), line_pts.end(), seed)!=line_pts.end() ) { return; }
+
+    line_pts.push_back(seed);
+
+    img.at<uchar>(seed) = 255;
+    flood_line(img, Point(seed.x - 1, seed.y), line_pts);
+    flood_line(img, Point(seed.x + 1, seed.y), line_pts);
+    flood_line(img, Point(seed.x, seed.y - 1), line_pts);
+    flood_line(img, Point(seed.x, seed.y + 1), line_pts);
+}
+
+void remove_staff2(Mat& orig, Mat& img, int index)
+{
+    char b = rng.uniform(0, 255);
+    char g = rng.uniform(0, 255);
+    char r = rng.uniform(0, 255);
+
+    for(int x = 0; x < img.cols; x++) {
+        if(img.at<uchar>(index, x) == 0) { 
+            vector<Point> pts;
+            flood_line(img, Point(x, index), pts);            
+            for( vector<Point>::iterator it = pts.begin(); it != pts.end(); ++it) {
+                orig.at<Vec3b>(it->y, it->x)[0] = b;
+                orig.at<Vec3b>(it->y, it->x)[1] = g;
+                orig.at<Vec3b>(it->y, it->x)[2] = r;
+            }
+        }    
+    }
+}
+
+void find_contours(int t, Mat& threshold_output, vector<Rect>& boundRect)
 {
     vector<vector<Point> > contours;
     vector<Vec4i> hierarchy;
 
-    /// Find contours
+    // Find contours
     findContours( threshold_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
 
-    /// Approximate contours to polygons + get bounding rects and circles
+    // Approximate contours to polygons + get bounding rects and circles
     vector<vector<Point> > contours_poly( contours.size() );
-    vector<Rect> boundRect( contours.size() );
     vector<Point2f>center( contours.size() );
     vector<float>radius( contours.size() );
+    boundRect.resize( contours.size() );
 
-    for( int i = 0; i < contours.size(); i++ )
-     { approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
-       boundRect[i] = boundingRect( Mat(contours_poly[i]) );
-    //       minEnclosingCircle( (Mat)contours_poly[i], center[i], radius[i] );
-     }
+    for( int i = 0; i < contours.size(); i++ ) { 
+        approxPolyDP( Mat(contours[i]), contours_poly[i], 3, true );
+        boundRect[i] = boundingRect( Mat(contours_poly[i]) );
+    }
 
-
-    /// Draw polygonal contour + bounding rects + circles
+    // Draw polygonal contour + bounding rects + circles
     Mat drawing = Mat::zeros( threshold_output.size(), CV_8UC3 );
-    for( int i = 0; i< contours.size(); i++ )
-     {
+    for( int i = 0; i < contours.size(); i++ ) {
        Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
        drawContours( drawing, contours_poly, i, color, 1, 8, vector<Vec4i>(), 0, Point() );
        rectangle( drawing, boundRect[i].tl(), boundRect[i].br(), color, 2, 8, 0 );
-    //     circle( drawing, center[i], (int)radius[i], color, 2, 8, 0 );
-     }
-
+    }
 
     imshow( "Contours", drawing );
 }
@@ -186,7 +215,7 @@ int main(int argc, char** argv)
     rotate(c_src, angle, c_src);
     rotate(g_src, angle, g_src);
 
-    threshold(g_src, bw_src, 130, 255, CV_THRESH_BINARY);//|CV_THRESH_OTSU);
+    threshold(g_src, bw_src, 100, 255, CV_THRESH_BINARY);//|CV_THRESH_OTSU);
     imshow("B&W", bw_src);
     
     vector<int> horiz_proj; 
@@ -198,13 +227,22 @@ int main(int argc, char** argv)
     vector<int> staff_positions;
     int max = *std::max_element(horiz_proj.begin(), horiz_proj.end());
     for(int i = 0; i < horiz_proj.size(); i++) {
-        if(horiz_proj[i] > max/4.0 && (horiz_proj[i] >= horiz_proj[i+1] || horiz_proj[i] >= horiz_proj[i-1]) ) {
+        if(horiz_proj[i] > max/8.0) {
             remove_staff(bw_src, i); 
         }
     }
 
-    imshow("B&W Without Staff", bw_src);
-    find_contours(thresh, bw_src);
+    imshow("color image showing staff removed", c_src);
+    imshow("Removed staff.", bw_src);
+
+    vector<Rect> rectangles;
+    find_contours(thresh, bw_src, rectangles);
+
+    cv::HOGDescriptor hog;
+    vector<float> descriptorsValues;
+    vector<Point> locations;
+
+    imshow("small", c_src(Range(1,100), Range(1,100)));    
 
     waitKey();
 
