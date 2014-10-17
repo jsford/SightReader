@@ -1,5 +1,6 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/objdetect/objdetect.hpp" // For HoG.
 
 #include <iostream>
 #include <cmath>
@@ -10,6 +11,8 @@ using namespace std;
 
 RNG rng(12345);
 int thresh = 100;
+
+HOGDescriptor hog;
 
 void help()
 { 
@@ -231,20 +234,35 @@ int main(int argc, char** argv)
             remove_staff(bw_src, i); 
         }
     }
+    imshow("No Staff", bw_src);
 
-    imshow("color image showing staff removed", c_src);
-    imshow("Removed staff.", bw_src);
-
-    vector<Rect> rectangles;
-    find_contours(thresh, bw_src, rectangles);
+    vector<Rect> bboxes;
+    Mat bw_temp = bw_src.clone();
+    find_contours(thresh, bw_temp, bboxes);
 
     cv::HOGDescriptor hog;
     vector<float> descriptorsValues;
     vector<Point> locations;
 
-    imshow("small", c_src(Range(1,100), Range(1,100)));    
+    int i = 7;
+    Mat img;
+    bw_src(Rect(bboxes[i].x, bboxes[i].y, bboxes[i].width, bboxes[i].height)).copyTo(img);
 
+    hog.compute(img , descriptorsValues, Size(0,0), Size(0,0), locations);
     waitKey();
+
+    cout << "HOG descriptor size is " << hog.getDescriptorSize() << endl;
+    cout << "img dimensions: " << img.cols << " width x " << img.rows << " height" << endl;
+    cout << "Found " << descriptorsValues.size() << " descriptor values" << endl;
+    cout << "Nr of locations specified : " << locations.size() << endl;
+/*
+    for(int i = 0; i<bboxes.size(); i++) {
+        if(bboxes[i].width * bboxes[i].height < 100) { continue; }
+        imshow("small", bw_src(range(bboxes[i].y, bboxes[i].y+bboxes[i].height), range(bboxes[i].x, bboxes[i].x + bboxes[i].width)));    
+        waitKey();
+    }*/
+    waitKey();
+
 
     return 0;
 }
